@@ -1,0 +1,12 @@
+---
+description: This is the project's tech stack
+globs: 
+alwaysApply: false
+---
+
+# Technical stack
+
+- Python for the backend
+- Streamlit for the front end
+- Use a local SQL engine for databases if needed
+- Express APIs using FAST API

@@ -1,0 +1,26 @@
+-- Create the npcs table
+CREATE TABLE IF NOT EXISTS npcs (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    background TEXT,
+    appearance TEXT,
+    personality TEXT,
+    goals TEXT,
+    assets TEXT,
+    memory TEXT
+);
+
+-- Create the interactions table
+CREATE TABLE IF NOT EXISTS interactions (
+    id SERIAL PRIMARY KEY,
+    npc_id INTEGER REFERENCES npcs(id),
+    player_input TEXT,
+    npc_response TEXT
+);
+
+-- Create the game_events table
+CREATE TABLE IF NOT EXISTS game_events (
+    id SERIAL PRIMARY KEY,
+    event_description TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
