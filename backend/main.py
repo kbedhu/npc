@@ -257,3 +257,13 @@ async def get_latest_interactions(npc_id: int, limit: int = 5):
         raise HTTPException(
             status_code=500, detail=f"Error fetching interactions: {str(e)}"
         )
+
+
+# Add this at the end of the file
+if __name__ == "__main__":
+    import uvicorn
+
+    # Get port from environment variable or default to 8000
+    port = int(os.getenv("PORT", "8000"))
+    # Run the FastAPI application
+    uvicorn.run(app, host="0.0.0.0", port=port)
