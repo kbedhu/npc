@@ -4,41 +4,59 @@ import openai
 from dotenv import load_dotenv
 import os
 import psycopg2
+from psycopg2 import pool
+from contextlib import contextmanager
 
 app = FastAPI()
 
 # Load environment variables from .env
 load_dotenv()
 
-# Fetch variables
-USER = os.getenv("SUPABASE_USER")
-PASSWORD = os.getenv("SUPABASE_PASSWORD")
-HOST = os.getenv("SUPABASE_HOST")
-PORT = os.getenv("SUPABASE_PORT")
-DBNAME = os.getenv("SUPABASE_DBNAME")
+# Database configuration
+DB_CONFIG = {
+    "dbname": os.getenv("SUPABASE_DBNAME"),
+    "user": os.getenv("SUPABASE_USER"),
+    "password": os.getenv("SUPABASE_PASSWORD"),
+    "host": os.getenv("SUPABASE_HOST"),
+    "port": os.getenv("SUPABASE_PORT", "5432"),
+}
 
-# Connect to the database
+# Create a connection pool
 try:
-    connection = psycopg2.connect(
-        user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
-    )
-    print("Connection successful!")
-
-    # Create a cursor to execute SQL queries
-    cursor = connection.cursor()
-
-    # Example query
-    cursor.execute("SELECT NOW();")
-    result = cursor.fetchone()
-    print("Current Time:", result)
-
-    # Close the cursor and connection
-    cursor.close()
-    connection.close()
-    print("Connection closed.")
-
+    connection_pool = psycopg2.pool.SimpleConnectionPool(1, 20, **DB_CONFIG)
+    print("Connection pool created successfully")
 except Exception as e:
-    print(f"Failed to connect: {e}")
+    print(f"Error creating connection pool: {e}")
+    connection_pool = None
+
+
+@contextmanager
+def get_db_connection():
+    """Get a database connection from the pool."""
+    connection = None
+    try:
+        connection = connection_pool.getconn()
+        yield connection
+    except Exception as e:
+        print(f"Error getting connection from pool: {e}")
+        raise HTTPException(status_code=500, detail="Database connection error")
+    finally:
+        if connection:
+            connection_pool.putconn(connection)
+
+
+@contextmanager
+def get_db_cursor(commit=False):
+    """Get a database cursor using a connection from the pool."""
+    with get_db_connection() as connection:
+        cursor = connection.cursor()
+        try:
+            yield cursor
+            if commit:
+                connection.commit()
+        finally:
+            cursor.close()
+
 
 # Set your OpenAI API key here
 load_dotenv()  # Load environment variables from .env file
@@ -63,29 +81,25 @@ async def root():
 @app.post("/npc/create")
 async def create_npc(npc: NPC):
     try:
-        connection = psycopg2.connect(
-            user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
-        )
-        cursor = connection.cursor()
-        # Insert NPC into the database
-        cursor.execute(
-            """
-            INSERT INTO npcs (name, personality, goals, assets, memory, background, appearance)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                npc.name,
-                npc.personality,
-                npc.goals,
-                npc.assets,
-                npc.memory,
-                npc.background,
-                npc.appearance,
-            ),
-        )
-        connection.commit()
-        cursor.close()
-        connection.close()
+        with get_db_connection() as connection:
+            # Insert NPC into the database
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO npcs (name, personality, goals, assets, memory, background, appearance)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    npc.name,
+                    npc.personality,
+                    npc.goals,
+                    npc.assets,
+                    npc.memory,
+                    npc.background,
+                    npc.appearance,
+                ),
+            )
+            connection.commit()
         return {"message": "NPC created successfully!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating NPC: {str(e)}")
@@ -98,46 +112,42 @@ async def interact_with_npc(
     prompt_context: str = Body(..., embed=True),
 ):
     try:
-        connection = psycopg2.connect(
-            user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
-        )
-        cursor = connection.cursor()
-        # Fetch NPC from the database
-        cursor.execute("SELECT * FROM npcs WHERE id = %s", (npc_id,))
-        npc = cursor.fetchone()
-        if not npc:
-            raise HTTPException(status_code=404, detail="NPC not found")
+        with get_db_connection() as connection:
+            # Fetch NPC from the database
+            cursor = connection.cursor()
+            cursor.execute("SELECT * FROM npcs WHERE id = %s", (npc_id,))
+            npc = cursor.fetchone()
+            if not npc:
+                raise HTTPException(status_code=404, detail="NPC not found")
 
-        # Use the prompt_context to construct the prompt
-        messages = [
-            {
-                "role": "system",
-                "content": prompt_context,
-            },
-            {"role": "user", "content": player_input},
-        ]
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            max_tokens=150,
-        )
-        npc_response = (
-            response.choices[0].message.content.strip()
-            if response.choices[0].message.content
-            else ""
-        )
+            # Use the prompt_context to construct the prompt
+            messages = [
+                {
+                    "role": "system",
+                    "content": prompt_context,
+                },
+                {"role": "user", "content": player_input},
+            ]
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                max_tokens=150,
+            )
+            npc_response = (
+                response.choices[0].message.content.strip()
+                if response.choices[0].message.content
+                else ""
+            )
 
-        # Insert interaction into the database
-        cursor.execute(
-            """
-            INSERT INTO interactions (npc_id, player_input, npc_response)
-            VALUES (%s, %s, %s)
-            """,
-            (npc_id, player_input, npc_response),
-        )
-        connection.commit()
-        cursor.close()
-        connection.close()
+            # Insert interaction into the database
+            cursor.execute(
+                """
+                INSERT INTO interactions (npc_id, player_input, npc_response)
+                VALUES (%s, %s, %s)
+                """,
+                (npc_id, player_input, npc_response),
+            )
+            connection.commit()
         return {"npc_response": npc_response}
     except Exception as e:
         raise HTTPException(
@@ -148,15 +158,11 @@ async def interact_with_npc(
 @app.get("/npc/list")
 async def list_npcs():
     try:
-        connection = psycopg2.connect(
-            user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
-        )
-        cursor = connection.cursor()
-        # Fetch all NPCs from the database
-        cursor.execute("SELECT * FROM npcs")
-        npcs = cursor.fetchall()
-        cursor.close()
-        connection.close()
+        with get_db_connection() as connection:
+            # Fetch all NPCs from the database
+            cursor = connection.cursor()
+            cursor.execute("SELECT * FROM npcs")
+            npcs = cursor.fetchall()
 
         # Convert tuples to dictionaries
         npc_list = [
@@ -180,15 +186,13 @@ async def list_npcs():
 @app.delete("/npc/remove_empty_personality")
 async def remove_empty_personality_npcs():
     try:
-        connection = psycopg2.connect(
-            user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
-        )
-        cursor = connection.cursor()
-        # Delete NPCs with empty personality from the database
-        cursor.execute("DELETE FROM npcs WHERE personality IS NULL OR personality = ''")
-        connection.commit()
-        cursor.close()
-        connection.close()
+        with get_db_connection() as connection:
+            # Delete NPCs with empty personality from the database
+            cursor = connection.cursor()
+            cursor.execute(
+                "DELETE FROM npcs WHERE personality IS NULL OR personality = ''"
+            )
+            connection.commit()
         return {"message": "NPCs with empty personality removed successfully!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error removing NPCs: {str(e)}")
@@ -197,30 +201,26 @@ async def remove_empty_personality_npcs():
 @app.put("/npc/update/{npc_id}")
 async def update_npc(npc_id: int, npc: NPC):
     try:
-        connection = psycopg2.connect(
-            user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
-        )
-        cursor = connection.cursor()
-        # Update NPC in the database
-        cursor.execute(
-            """
-            UPDATE npcs SET name = %s, personality = %s, goals = %s, assets = %s, memory = %s, background = %s, appearance = %s
-            WHERE id = %s
-            """,
-            (
-                npc.name,
-                npc.personality,
-                npc.goals,
-                npc.assets,
-                npc.memory,
-                npc.background,
-                npc.appearance,
-                npc_id,
-            ),
-        )
-        connection.commit()
-        cursor.close()
-        connection.close()
+        with get_db_connection() as connection:
+            # Update NPC in the database
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE npcs SET name = %s, personality = %s, goals = %s, assets = %s, memory = %s, background = %s, appearance = %s
+                WHERE id = %s
+                """,
+                (
+                    npc.name,
+                    npc.personality,
+                    npc.goals,
+                    npc.assets,
+                    npc.memory,
+                    npc.background,
+                    npc.appearance,
+                    npc_id,
+                ),
+            )
+            connection.commit()
         return {"message": "NPC updated successfully!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating NPC: {str(e)}")
@@ -229,23 +229,19 @@ async def update_npc(npc_id: int, npc: NPC):
 @app.get("/npc/interactions/{npc_id}")
 async def get_latest_interactions(npc_id: int, limit: int = 5):
     try:
-        connection = psycopg2.connect(
-            user=USER, password=PASSWORD, host=HOST, port=PORT, dbname=DBNAME
-        )
-        cursor = connection.cursor()
-        # Fetch latest interactions from the database
-        cursor.execute(
-            """
-            SELECT player_input, npc_response FROM interactions
-            WHERE npc_id = %s
-            ORDER BY id DESC
-            LIMIT %s
-            """,
-            (npc_id, limit),
-        )
-        interactions = cursor.fetchall()
-        cursor.close()
-        connection.close()
+        with get_db_connection() as connection:
+            # Fetch latest interactions from the database
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT player_input, npc_response FROM interactions
+                WHERE npc_id = %s
+                ORDER BY id DESC
+                LIMIT %s
+                """,
+                (npc_id, limit),
+            )
+            interactions = cursor.fetchall()
 
         # Convert tuples to dictionaries
         interaction_list = [

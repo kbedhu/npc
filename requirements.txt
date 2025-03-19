@@ -2,5 +2,5 @@ fastapi
 uvicorn
 streamlit
 openai
-python-dotenv 
-psycopg2
+python-dotenv
+psycopg2-binary
