@@ -34,4 +34,9 @@ wheels/
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Database and Migration files
+database/migrate_to_postgres.py
+database/verify_migration.py
+database/npc.db 
