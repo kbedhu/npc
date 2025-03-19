@@ -3,6 +3,14 @@ import requests
 from typing import List, Dict, Any
 import json  # Import the json module
 import re
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Get backend URL from environment variable or use default for local development
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 st.title("NPC Soul App")
 
@@ -11,7 +19,7 @@ st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", ("NPC Creation", "NPC Interaction", "List NPCs"))
 
 # Fetch NPC list from backend for editing
-response = requests.get("http://localhost:8000/npc/list")
+response = requests.get(f"{BACKEND_URL}/npc/list")
 npcs: list[dict[str, any]] = (
     response.json().get("npcs", []) if response.status_code == 200 else []
 )
@@ -136,7 +144,7 @@ if page == "NPC Creation":
             if selected_npc:
                 # Update existing NPC
                 response = requests.put(
-                    f"http://localhost:8000/npc/update/{selected_npc['id']}",
+                    f"{BACKEND_URL}/npc/update/{selected_npc['id']}",
                     json=npc_data,
                 )
                 if response.status_code == 200:
@@ -145,9 +153,7 @@ if page == "NPC Creation":
                     st.error("Failed to update NPC.")
             else:
                 # Create new NPC
-                response = requests.post(
-                    "http://localhost:8000/npc/create", json=npc_data
-                )
+                response = requests.post(f"{BACKEND_URL}/npc/create", json=npc_data)
                 if response.status_code == 200:
                     st.success("NPC created successfully!")
                 else:
@@ -157,7 +163,7 @@ if page == "NPC Creation":
 elif page == "NPC Interaction":
     st.header("Interact with NPCs")
     # Fetch NPC list from backend
-    response = requests.get("http://localhost:8000/npc/list")
+    response = requests.get(f"{BACKEND_URL}/npc/list")
     if response.status_code == 200:
         npcs = response.json().get("npcs", [])
         npc_names = [npc["name"] for npc in npcs]
@@ -196,9 +202,7 @@ elif page == "NPC Interaction":
             chat_history.markdown(formatted_chat, unsafe_allow_html=True)
 
         # Fetch latest interactions with the selected NPC
-        interactions_response = requests.get(
-            f"http://localhost:8000/npc/interactions/{npc_id}"
-        )
+        interactions_response = requests.get(f"{BACKEND_URL}/npc/interactions/{npc_id}")
         if interactions_response.status_code == 200:
             interactions = interactions_response.json().get("interactions", [])
             print("interactions LENGTH************:", len(interactions))
@@ -237,7 +241,7 @@ elif page == "NPC Interaction":
                 # print prompt length
                 # print("prompt length", len(prompt))
                 response = requests.post(
-                    f"http://localhost:8000/npc/interact/{npc_id}",
+                    f"{BACKEND_URL}/npc/interact/{npc_id}",
                     json={"player_input": player_input, "prompt_context": prompt},
                 )
                 print("response", response.text)
@@ -296,7 +300,7 @@ elif page == "NPC Interaction":
 # Add a new page for listing NPCs
 if page == "List NPCs":
     st.title("List of Created NPCs")
-    response = requests.get("http://localhost:8000/npc/list")
+    response = requests.get(f"{BACKEND_URL}/npc/list")
     if response.status_code == 200:
         npcs = response.json().get("npcs", [])
         # Filter out NPCs with null or empty personality
@@ -315,3 +319,43 @@ if page == "List NPCs":
             st.write("No NPCs found.")
     else:
         st.error("Failed to retrieve NPCs.")
+
+
+# Update the other API calls to use BACKEND_URL
+@st.cache_data
+def update_npc(npc_data, npc_id):
+    response = requests.put(
+        f"{BACKEND_URL}/npc/update/{npc_id}",
+        json=npc_data,
+    )
+    return response.status_code == 200
+
+
+def create_npc(npc_data):
+    response = requests.post(
+        f"{BACKEND_URL}/npc/create",
+        json=npc_data,
+    )
+    return response.status_code == 200
+
+
+def get_npc_list():
+    response = requests.get(f"{BACKEND_URL}/npc/list")
+    return response.json().get("npcs", []) if response.status_code == 200 else []
+
+
+def get_npc_interactions(npc_id):
+    response = requests.get(f"{BACKEND_URL}/npc/interactions/{npc_id}")
+    return (
+        response.json().get("interactions", []) if response.status_code == 200 else []
+    )
+
+
+def interact_with_npc(npc_id, player_input, prompt_context):
+    response = requests.post(
+        f"{BACKEND_URL}/npc/interact/{npc_id}",
+        json={"player_input": player_input, "prompt_context": prompt_context},
+    )
+    return (
+        response.json().get("npc_response", "") if response.status_code == 200 else ""
+    )

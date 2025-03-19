@@ -1,5 +1,59 @@
 import streamlit as st
 import requests
+import json
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Get backend URL from environment variable or use default for local development
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+
+
+# Test NPC creation
+def test_create_npc():
+    npc_data = {
+        "name": "Test NPC",
+        "personality": "Friendly and helpful",
+        "goals": "Help users test the application",
+        "assets": "None",
+        "memory": "Fresh test memory",
+        "background": "Created for testing",
+        "appearance": "Digital entity",
+    }
+
+    response = requests.post(f"{BACKEND_URL}/npc/create", json=npc_data)
+    print(f"Create NPC Response: {response.status_code}")
+    print(response.json() if response.status_code == 200 else "Failed to create NPC")
+
+
+# Test NPC listing
+def test_list_npcs():
+    response = requests.get(f"{BACKEND_URL}/npc/list")
+    print(f"List NPCs Response: {response.status_code}")
+    print(response.json() if response.status_code == 200 else "Failed to list NPCs")
+
+
+# Test NPC interaction
+def test_npc_interaction(npc_id):
+    interaction_data = {
+        "player_input": "Hello, test NPC!",
+        "prompt_context": "This is a test interaction",
+    }
+
+    response = requests.post(
+        f"{BACKEND_URL}/npc/interact/{npc_id}", json=interaction_data
+    )
+    print(f"Interaction Response: {response.status_code}")
+    print(response.json() if response.status_code == 200 else "Failed to interact")
+
+
+if __name__ == "__main__":
+    test_create_npc()
+    test_list_npcs()
+    # Assuming NPC ID 1 exists
+    test_npc_interaction(1)
 
 st.title("NPC Soul App")
 
@@ -63,7 +117,7 @@ if page == "NPC Creation":
                 "assets": assets,
                 "memory": memory,
             }
-            response = requests.post("http://localhost:8000/npc/create", json=npc_data)
+            response = requests.post(f"{BACKEND_URL}/npc/create", json=npc_data)
             if response.status_code == 200:
                 st.success("NPC created successfully!")
             else:
@@ -73,7 +127,7 @@ if page == "NPC Creation":
 elif page == "NPC Interaction":
     st.header("Interact with NPCs")
     # Fetch NPC list from backend
-    response = requests.get("http://localhost:8000/npc/list")
+    response = requests.get(f"{BACKEND_URL}/npc/list")
     if response.status_code == 200:
         npcs = response.json().get("npcs", [])
         npc_names = [npc["name"] for npc in npcs]
@@ -126,7 +180,7 @@ elif page == "NPC Interaction":
                     unsafe_allow_html=True,
                 )
                 response = requests.post(
-                    f"http://localhost:8000/npc/interact/{npc_id}",
+                    f"{BACKEND_URL}/npc/interact/{npc_id}",
                     json={"player_input": player_input},
                 )
                 if response.status_code == 200:
@@ -192,7 +246,7 @@ elif page == "NPC Interaction":
 # Add a new page for listing NPCs
 if page == "List NPCs":
     st.title("List of Created NPCs")
-    response = requests.get("http://localhost:8000/npc/list")
+    response = requests.get(f"{BACKEND_URL}/npc/list")
     # print(response.json())
     if response.status_code == 200:
         npcs = response.json().get("npcs", [])
