@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Get backend URL from environment variable or use default for local development
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = os.getenv("BACKEND_URL", "https://npc-zd1q.onrender.com") # "http://localhost:8000")
 
 st.title("NPC Soul App")
 
