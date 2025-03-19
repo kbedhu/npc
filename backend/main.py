@@ -96,6 +96,7 @@ class NPC(BaseModel):
 
 
 @app.get("/")
+@app.head("/")
 async def root():
     return {"message": "Welcome to the NPC Soul App!"}
 
