@@ -6,6 +6,7 @@ import os
 import psycopg2
 from psycopg2 import pool
 from contextlib import contextmanager
+from urllib.parse import urlparse
 
 app = FastAPI()
 
@@ -13,17 +14,38 @@ app = FastAPI()
 load_dotenv()
 
 # Database configuration
-DB_CONFIG = {
-    "dbname": os.getenv("SUPABASE_DBNAME"),
-    "user": os.getenv("SUPABASE_USER"),
-    "password": os.getenv("SUPABASE_PASSWORD"),
-    "host": os.getenv("SUPABASE_HOST"),
-    "port": os.getenv("SUPABASE_PORT", "5432"),
-}
+DATABASE_URL = os.getenv("POSTGRESQL_EXTERNAL_URL") or os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    print("Warning: Neither POSTGRESQL_EXTERNAL_URL nor DATABASE_URL is set")
+
+if DATABASE_URL:
+    # Parse the DATABASE_URL
+    result = urlparse(DATABASE_URL)
+    db_config = {
+        "dbname": result.path[1:],
+        "user": result.username,
+        "password": result.password,
+        "host": result.hostname,
+        "port": result.port or 5432,
+    }
+else:
+    # Fallback to individual environment variables
+    db_config = {
+        "dbname": os.getenv("POSTGRES_DATABASE"),
+        "user": os.getenv("POSTGRES_USER"),
+        "password": os.getenv("POSTGRES_PASSWORD"),
+        "host": os.getenv("POSTGRES_HOST"),
+        "port": os.getenv("POSTGRES_PORT", "5432"),
+    }
+
+print(
+    f"Attempting to connect to database at {db_config['host']}:{db_config['port']}/{db_config['dbname']}"
+)
 
 # Create a connection pool
 try:
-    connection_pool = psycopg2.pool.SimpleConnectionPool(1, 20, **DB_CONFIG)
+    connection_pool = psycopg2.pool.SimpleConnectionPool(1, 20, **db_config)
     print("Connection pool created successfully")
 except Exception as e:
     print(f"Error creating connection pool: {e}")
